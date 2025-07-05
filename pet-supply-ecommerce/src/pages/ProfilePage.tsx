@@ -36,16 +36,25 @@ const ProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
   
+  // Get the first address from the addresses array, or use defaults
+  const userAddress = user?.addresses?.[0] || {
+    street: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: 'USA'
+  };
+  
   const [profileData, setProfileData] = useState<ProfileData>({
     name: user?.name || '',
     email: user?.email || '',
     phone: user?.phone || '',
     address: {
-      street: user?.address?.street || '',
-      city: user?.address?.city || '',
-      state: user?.address?.state || '',
-      zipCode: user?.address?.zipCode || '',
-      country: user?.address?.country || 'USA'
+      street: userAddress.street || '',
+      city: userAddress.city || '',
+      state: userAddress.state || '',
+      zipCode: userAddress.zipCode || '',
+      country: userAddress.country || 'USA'
     }
   });
 
@@ -75,11 +84,11 @@ const ProfilePage: React.FC = () => {
       email: user?.email || '',
       phone: user?.phone || '',
       address: {
-        street: user?.address?.street || '',
-        city: user?.address?.city || '',
-        state: user?.address?.state || '',
-        zipCode: user?.address?.zipCode || '',
-        country: user?.address?.country || 'USA'
+        street: userAddress.street || '',
+        city: userAddress.city || '',
+        state: userAddress.state || '',
+        zipCode: userAddress.zipCode || '',
+        country: userAddress.country || 'USA'
       }
     });
     setIsEditing(false);

@@ -111,8 +111,8 @@ const CartPage: React.FC = () => {
                   {/* Product Image */}
                   <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                     <img
-                      src={item.image}
-                      alt={item.name}
+                      src={item.product.images[0]}
+                      alt={item.product.name}
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -120,13 +120,13 @@ const CartPage: React.FC = () => {
                   {/* Product Info */}
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-medium text-gray-900 truncate">
-                      {item.name}
+                      {item.product.name}
                     </h3>
-                    {item.variant && (
-                      <p className="text-sm text-gray-600">Size: {item.variant}</p>
+                    {item.selectedVariant && (
+                      <p className="text-sm text-gray-600">Size: {item.selectedVariant.name}</p>
                     )}
                     <p className="text-lg font-bold text-gray-900 mt-1">
-                      ${item.price.toFixed(2)}
+                      ${item.product.price.toFixed(2)}
                     </p>
                   </div>
 
@@ -152,7 +152,7 @@ const CartPage: React.FC = () => {
 
                     {/* Remove Button */}
                     <button
-                      onClick={() => handleRemoveItem(item.id, item.name)}
+                      onClick={() => handleRemoveItem(item.id, item.product.name)}
                       className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-5 h-5" />
@@ -164,7 +164,7 @@ const CartPage: React.FC = () => {
                 <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
                   <span className="text-sm text-gray-600">Item Total:</span>
                   <span className="text-lg font-bold text-gray-900">
-                    ${(item.price * item.quantity).toFixed(2)}
+                    ${(item.product.price * item.quantity).toFixed(2)}
                   </span>
                 </div>
               </div>

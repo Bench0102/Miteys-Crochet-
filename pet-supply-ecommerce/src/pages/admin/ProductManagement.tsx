@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Product } from '../../types';
+import { Product, ProductCategory, PetType } from '../../types';
+import { firebaseService } from '../../services/firebaseService';
 import { 
   Plus, 
   Search, 
@@ -9,50 +10,11 @@ import {
   Eye, 
   Package,
   DollarSign,
-  Star
+  Star,
+  X,
+  Upload
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-// Mock products data
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    name: 'Premium Dog Food - Chicken & Rice',
-    description: 'High-quality dry dog food made with real chicken and brown rice.',
-    price: 49.99,
-    originalPrice: 59.99,
-    images: ['/api/placeholder/400/400'],
-    category: 'food',
-    subcategory: 'dry-food',
-    brand: 'PetNutrition',
-    rating: 4.8,
-    reviewCount: 156,
-    stock: 25,
-    tags: ['premium', 'chicken', 'adult-dogs'],
-    isOnSale: true,
-    isFeatured: true,
-    createdAt: '2024-01-01',
-    updatedAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    name: 'Interactive Cat Toy Set',
-    description: 'Engaging toy set to keep your cat entertained for hours.',
-    price: 29.99,
-    images: ['/api/placeholder/400/400'],
-    category: 'toys',
-    subcategory: 'interactive',
-    brand: 'CatPlay',
-    rating: 4.5,
-    reviewCount: 89,
-    stock: 15,
-    tags: ['interactive', 'cats', 'entertainment'],
-    isOnSale: false,
-    isFeatured: false,
-    createdAt: '2024-01-05',
-    updatedAt: '2024-01-10'
-  }
-];
 
 const ProductManagement: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -60,23 +22,53 @@ const ProductManagement: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  // Update formData interface
+  interface FormData {
+    name: string;
+    description: string;
+    price: number;
+    originalPrice: number;
+    category: ProductCategory;
+    petType: PetType[]; // Changed from single PetType to array
+    brand: string;
+    stock: number;
+    images: string[];
+    isFeatured: boolean;
+    isOnSale: boolean;
+  }
 
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    description: '',
+    price: 0,
+    originalPrice: 0,
+    category: 'food',
+    petType: ['dog'], // Changed to array
+    brand: '',
+    stock: 0,
+    images: [''],
+    isFeatured: false,
+    isOnSale: false
+  });
+  
   useEffect(() => {
-    // Mock API call
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setProducts(mockProducts);
-      } catch (error) {
-        toast.error('Failed to load products');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchProducts();
   }, []);
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const fetchedProducts = await firebaseService.getProducts();
+      setProducts(fetchedProducts);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      toast.error('Failed to load products');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -85,18 +77,115 @@ const ProductManagement: React.FC = () => {
     return matchesSearch && matchesCategory;
   });
 
-  const handleDeleteProduct = (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
-      setProducts(products.filter(p => p.id !== id));
-      toast.success('Product deleted successfully');
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const productData = {
+        ...formData,
+        rating: 0,
+        reviewCount: 0,
+        reviews: [], // Add missing field
+        tags: [],
+        variants: [],
+        specifications: {}, // Add missing field
+        createdAt: new Date().toISOString(), // Add missing field
+        updatedAt: new Date().toISOString() // Add missing field
+      };
+      
+      const newProductId = await firebaseService.addProduct(productData);
+      const newProduct = { ...productData, id: newProductId };
+      setProducts([...products, newProduct]);
+      
+      toast.success('Product added successfully');
+      setShowAddModal(false);
+      resetForm();
+    } catch (error) {
+      console.error('Error adding product:', error);
+      toast.error('Failed to add product');
     }
   };
 
-  const handleToggleFeatured = (id: string) => {
-    setProducts(products.map(p => 
-      p.id === id ? { ...p, isFeatured: !p.isFeatured } : p
-    ));
-    toast.success('Product updated successfully');
+  const handleEditProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    
+    try {
+      await firebaseService.updateProduct(editingProduct.id, formData);
+      setProducts(products.map(p => 
+        p.id === editingProduct.id ? { ...p, ...formData } : p
+      ));
+      
+      toast.success('Product updated successfully');
+      setShowEditModal(false);
+      setEditingProduct(null);
+      resetForm();
+    } catch (error) {
+      console.error('Error updating product:', error);
+      toast.error('Failed to update product');
+    }
+  };
+
+  const handleDeleteProduct = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
+      try {
+        await firebaseService.deleteProduct(id);
+        setProducts(products.filter(p => p.id !== id));
+        toast.success('Product deleted successfully');
+      } catch (error) {
+        console.error('Error deleting product:', error);
+        toast.error('Failed to delete product');
+      }
+    }
+  };
+
+  const handleToggleFeatured = async (id: string) => {
+    try {
+      const product = products.find(p => p.id === id);
+      if (product) {
+        await firebaseService.updateProduct(id, { isFeatured: !product.isFeatured });
+        setProducts(products.map(p => 
+          p.id === id ? { ...p, isFeatured: !p.isFeatured } : p
+        ));
+        toast.success('Product updated successfully');
+      }
+    } catch (error) {
+      console.error('Error updating product:', error);
+      toast.error('Failed to update product');
+    }
+  };
+
+  const openEditModal = (product: Product) => {
+    setEditingProduct(product);
+    setFormData({
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      originalPrice: product.originalPrice || 0,
+      category: product.category,
+      petType: product.petType,
+      brand: product.brand,
+      stock: product.stock,
+      images: product.images,
+      isFeatured: product.isFeatured,
+      isOnSale: product.isOnSale
+    });
+    setShowEditModal(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      price: 0,
+      originalPrice: 0,
+      category: 'food',
+      petType: ['dog'], // Changed to array
+      brand: '',
+      stock: 0,
+      images: [''],
+      isFeatured: false,
+      isOnSale: false
+    });
   };
 
   const categories = [
@@ -106,6 +195,9 @@ const ProductManagement: React.FC = () => {
     { value: 'accessories', label: 'Accessories' },
     { value: 'health', label: 'Health & Care' }
   ];
+
+  const categoryOptions: ProductCategory[] = ['food', 'toys', 'accessories', 'health'];
+  const petTypeOptions: PetType[] = ['dog', 'cat', 'bird', 'fish', 'rabbit', 'hamster', 'reptile', 'all']; // Fixed: removed 'small-pets'
 
   if (loading) {
     return (
@@ -173,7 +265,7 @@ const ProductManagement: React.FC = () => {
 
         {/* Products Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((product) => (
+          {filteredProducts.map((product: Product) => (
             <div key={product.id} className="bg-white rounded-lg shadow-sm border overflow-hidden">
               {/* Product Image */}
               <div className="relative h-48 bg-gray-100">
@@ -223,7 +315,10 @@ const ProductManagement: React.FC = () => {
                     <Eye className="w-4 h-4 mr-1" />
                     View
                   </button>
-                  <button className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center">
+                  <button 
+                    onClick={() => openEditModal(product)}
+                    className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center"
+                  >
                     <Edit className="w-4 h-4 mr-1" />
                     Edit
                   </button>
@@ -270,6 +365,351 @@ const ProductManagement: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Add Product Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Add New Product</h2>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddProduct} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.brand}
+                    onChange={(e) => setFormData({...formData, brand: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={formData.price}
+                    onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Original Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.originalPrice}
+                    onChange={(e) => setFormData({...formData, originalPrice: parseFloat(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
+                  <input
+                    type="number"
+                    required
+                    value={formData.stock}
+                    onChange={(e) => setFormData({...formData, stock: parseInt(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({...formData, category: e.target.value as ProductCategory})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {categoryOptions.map(category => (
+                      <option key={category} value={category}>
+                        {category.charAt(0).toUpperCase() + category.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Pet Type</label>
+                  <select
+                    value={formData.petType[0] || 'dog'}
+                    onChange={(e) => setFormData({...formData, petType: [e.target.value as PetType]})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {petTypeOptions.map(petType => (
+                      <option key={petType} value={petType}>
+                        {petType.charAt(0).toUpperCase() + petType.slice(1).replace('-', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
+                <input
+                  type="url"
+                  required
+                  value={formData.images[0]}
+                  onChange={(e) => setFormData({...formData, images: [e.target.value]})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="https://example.com/image.jpg"
+                />
+              </div>
+
+              <div className="flex items-center space-x-6">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.isFeatured}
+                    onChange={(e) => setFormData({...formData, isFeatured: e.target.checked})}
+                    className="mr-2"
+                  />
+                  Featured Product
+                </label>
+
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.isOnSale}
+                    onChange={(e) => setFormData({...formData, isOnSale: e.target.checked})}
+                    className="mr-2"
+                  />
+                  On Sale
+                </label>
+              </div>
+
+              <div className="flex space-x-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Add Product
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Edit Product</h2>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditProduct} className="space-y-4">
+              {/* Same form fields as Add Product Modal */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.brand}
+                    onChange={(e) => setFormData({...formData, brand: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={formData.price}
+                    onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Original Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.originalPrice}
+                    onChange={(e) => setFormData({...formData, originalPrice: parseFloat(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
+                  <input
+                    type="number"
+                    required
+                    value={formData.stock}
+                    onChange={(e) => setFormData({...formData, stock: parseInt(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({...formData, category: e.target.value as ProductCategory})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {categoryOptions.map(category => (
+                      <option key={category} value={category}>
+                        {category.charAt(0).toUpperCase() + category.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Pet Type</label>
+                  <select
+                    value={formData.petType}
+                    onChange={(e) => setFormData({...formData, petType: e.target.value as PetType})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {petTypeOptions.map(petType => (
+                      <option key={petType} value={petType}>
+                        {petType.charAt(0).toUpperCase() + petType.slice(1).replace('-', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
+                <input
+                  type="url"
+                  required
+                  value={formData.images[0]}
+                  onChange={(e) => setFormData({...formData, images: [e.target.value]})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="https://example.com/image.jpg"
+                />
+              </div>
+
+              <div className="flex items-center space-x-6">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.isFeatured}
+                    onChange={(e) => setFormData({...formData, isFeatured: e.target.checked})}
+                    className="mr-2"
+                  />
+                  Featured Product
+                </label>
+
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.isOnSale}
+                    onChange={(e) => setFormData({...formData, isOnSale: e.target.checked})}
+                    className="mr-2"
+                  />
+                  On Sale
+                </label>
+              </div>
+
+              <div className="flex space-x-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Update Product
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

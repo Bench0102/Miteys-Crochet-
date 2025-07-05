@@ -18,10 +18,10 @@ import {
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db } from '../config/firebase'; // Changed from '../lib/firebase'
 
 const OrderHistoryPage: React.FC = () => {
-  const { user } = useContext(AuthContext);
+  const { user } = useContext(AuthContext)!;
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [searchTerm, setSearchTerm] = useState('');

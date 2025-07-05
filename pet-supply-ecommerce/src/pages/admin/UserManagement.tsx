@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../../types';
+import { firebaseService } from '../../services/firebaseService';
 import { 
   Search, 
   Filter, 
@@ -20,7 +21,6 @@ import toast from 'react-hot-toast';
 // Extended User interface for admin management
 interface AdminUser extends User {
   status: 'active' | 'inactive' | 'banned';
-  lastLogin?: string;
   orderCount: number;
   totalSpent: number;
 }
@@ -33,12 +33,26 @@ const mockUsers: AdminUser[] = [
     name: 'John Doe',
     role: 'user',
     phone: '+1 (555) 123-4567',
-    address: {
+    addresses: [{
+      id: 'addr1',
+      type: 'home',
+      name: 'Home Address',
       street: '123 Main St',
       city: 'New York',
       state: 'NY',
       zipCode: '10001',
-      country: 'USA'
+      country: 'USA',
+      isDefault: true
+    }],
+    preferences: {
+      petTypes: ['dog'],
+      favoriteCategories: ['food'],
+      newsletter: true,
+      notifications: {
+        email: true,
+        sms: false,
+        push: true
+      }
     },
     status: 'active',
     lastLogin: '2024-01-15T10:30:00Z',
@@ -52,12 +66,26 @@ const mockUsers: AdminUser[] = [
     name: 'Jane Smith',
     role: 'user',
     phone: '+1 (555) 987-6543',
-    address: {
+    addresses: [{
+      id: 'addr2',
+      type: 'home',
+      name: 'Home Address',
       street: '456 Oak Ave',
       city: 'Los Angeles',
       state: 'CA',
       zipCode: '90210',
-      country: 'USA'
+      country: 'USA',
+      isDefault: true
+    }],
+    preferences: {
+      petTypes: ['cat'],
+      favoriteCategories: ['toys'],
+      newsletter: false,
+      notifications: {
+        email: true,
+        sms: true,
+        push: false
+      }
     },
     status: 'active',
     lastLogin: '2024-01-14T15:45:00Z',
@@ -71,12 +99,26 @@ const mockUsers: AdminUser[] = [
     name: 'Admin User',
     role: 'admin',
     phone: '+1 (555) 000-0000',
-    address: {
+    addresses: [{
+      id: 'addr3',
+      type: 'work',
+      name: 'Office Address',
       street: '789 Admin St',
       city: 'Seattle',
       state: 'WA',
       zipCode: '98101',
-      country: 'USA'
+      country: 'USA',
+      isDefault: true
+    }],
+    preferences: {
+      petTypes: ['all'],
+      favoriteCategories: ['food', 'toys'],
+      newsletter: true,
+      notifications: {
+        email: true,
+        sms: false,
+        push: true
+      }
     },
     status: 'active',
     lastLogin: '2024-01-15T12:00:00Z',
@@ -96,13 +138,22 @@ const UserManagement: React.FC = () => {
   const [showUserModal, setShowUserModal] = useState(false);
 
   useEffect(() => {
-    // Mock API call
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setUsers(mockUsers);
+        const fetchedUsers = await firebaseService.getUsers();
+        
+        // Transform users to AdminUser format
+        const adminUsers: AdminUser[] = fetchedUsers.map((user: User) => ({
+          ...user,
+          status: 'active' as const, // Default status, you may want to add this field to Firebase
+          orderCount: 0, // You'll need to calculate this from orders
+          totalSpent: 0 // You'll need to calculate this from orders
+        }));
+        
+        setUsers(adminUsers);
       } catch (error) {
+        console.error('Error fetching users:', error);
         toast.error('Failed to load users');
       } finally {
         setLoading(false);
@@ -120,17 +171,30 @@ const UserManagement: React.FC = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const handleStatusUpdate = (userId: string, newStatus: 'active' | 'inactive' | 'banned') => {
-    setUsers(users.map(user => 
-      user.id === userId ? { ...user, status: newStatus } : user
-    ));
-    toast.success(`User status updated to ${newStatus}`);
+  const handleStatusUpdate = async (userId: string, newStatus: 'active' | 'inactive' | 'banned') => {
+    try {
+      // Update user status in Firebase
+      await firebaseService.updateUser(userId, { status: newStatus });
+      setUsers(users.map(user => 
+        user.id === userId ? { ...user, status: newStatus } : user
+      ));
+      toast.success(`User status updated to ${newStatus}`);
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      toast.error('Failed to update user status');
+    }
   };
 
-  const handleDeleteUser = (userId: string, userName: string) => {
+  const handleDeleteUser = async (userId: string, userName: string) => {
     if (window.confirm(`Are you sure you want to delete user "${userName}"?`)) {
-      setUsers(users.filter(u => u.id !== userId));
-      toast.success('User deleted successfully');
+      try {
+        await firebaseService.deleteUser(userId);
+        setUsers(users.filter(u => u.id !== userId));
+        toast.success('User deleted successfully');
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        toast.error('Failed to delete user');
+      }
     }
   };
 
@@ -430,11 +494,17 @@ const UserManagement: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="font-medium text-gray-900 mb-2">Address</h3>
-                    <p className="text-sm text-gray-600">{selectedUser.address.street}</p>
-                    <p className="text-sm text-gray-600">
-                      {selectedUser.address.city}, {selectedUser.address.state} {selectedUser.address.zipCode}
-                    </p>
-                    <p className="text-sm text-gray-600">{selectedUser.address.country}</p>
+                    {selectedUser.addresses.length > 0 ? (
+                      <>
+                        <p className="text-sm text-gray-600">{selectedUser.addresses[0].street}</p>
+                        <p className="text-sm text-gray-600">
+                          {selectedUser.addresses[0].city}, {selectedUser.addresses[0].state} {selectedUser.addresses[0].zipCode}
+                        </p>
+                        <p className="text-sm text-gray-600">{selectedUser.addresses[0].country}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-600">No address provided</p>
+                    )}
                   </div>
                 </div>
 

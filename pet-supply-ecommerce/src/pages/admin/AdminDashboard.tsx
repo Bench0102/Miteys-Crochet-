@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { firebaseService } from '../../services/firebaseService';
 import { 
   Users, 
   Package, 
@@ -7,10 +8,8 @@ import {
   DollarSign, 
   TrendingUp, 
   TrendingDown,
-  Eye,
   Plus,
-  Edit,
-  Trash2
+  Eye
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -49,82 +48,40 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock data - replace with actual API calls
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
         
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Mock stats
-        setStats({
-          totalUsers: 1247,
-          totalProducts: 156,
-          totalOrders: 892,
-          totalRevenue: 45678.90,
-          monthlyGrowth: {
-            users: 12.5,
-            orders: 8.3,
-            revenue: 15.7
-          }
-        });
-        
-        // Mock recent orders
-        setRecentOrders([
-          {
-            id: 'ORD-001',
-            customerName: 'John Doe',
-            total: 89.99,
-            status: 'pending',
-            date: '2024-01-15'
-          },
-          {
-            id: 'ORD-002',
-            customerName: 'Jane Smith',
-            total: 156.50,
-            status: 'processing',
-            date: '2024-01-15'
-          },
-          {
-            id: 'ORD-003',
-            customerName: 'Mike Johnson',
-            total: 67.25,
-            status: 'shipped',
-            date: '2024-01-14'
-          },
-          {
-            id: 'ORD-004',
-            customerName: 'Sarah Wilson',
-            total: 234.75,
-            status: 'delivered',
-            date: '2024-01-14'
-          }
+        // Fetch real data from Firebase
+        const [dashboardStats, orders, products] = await Promise.all([
+          firebaseService.getDashboardStats(),
+          firebaseService.getOrders(),
+          firebaseService.getProducts()
         ]);
         
-        // Mock top products
-        setTopProducts([
-          {
-            id: '1',
-            name: 'Premium Dog Food - Chicken & Rice',
-            sales: 145,
-            revenue: 7245.55
-          },
-          {
-            id: '2',
-            name: 'Interactive Cat Toy Set',
-            sales: 89,
-            revenue: 2670.00
-          },
-          {
-            id: '3',
-            name: 'Dog Training Treats',
-            sales: 76,
-            revenue: 1520.00
-          }
-        ]);
+        setStats(dashboardStats);
+        
+        // Get recent orders (last 5)
+        const recentOrdersData = orders.slice(0, 5).map((order: any) => ({
+          id: order.id,
+          customerName: order.shippingInfo?.firstName + ' ' + order.shippingInfo?.lastName || 'Unknown',
+          total: order.total,
+          status: order.status,
+          date: new Date(order.createdAt).toISOString().split('T')[0]
+        }));
+        setRecentOrders(recentOrdersData);
+        
+        // Calculate top products (you may need to implement this logic)
+        const topProductsData = products.slice(0, 3).map((product: any) => ({
+          id: product.id,
+          name: product.name,
+          sales: product.reviewCount || 0, // Use review count as proxy for sales
+          revenue: (product.reviewCount || 0) * product.price
+        }));
+        setTopProducts(topProductsData);
         
       } catch (error) {
+        console.error('Error fetching dashboard data:', error);
         toast.error('Failed to load dashboard data');
       } finally {
         setLoading(false);

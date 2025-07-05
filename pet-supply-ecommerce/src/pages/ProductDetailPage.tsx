@@ -2,64 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
-import { Product, Review } from '../types';
+import { Product, Review, ProductVariant } from '../types';
 import { Star, Heart, ShoppingCart, Truck, Shield, RotateCcw, ArrowLeft, Plus, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
-// Mock product data - replace with API call
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    name: 'Premium Dog Food - Chicken & Rice',
-    description: 'High-quality dry dog food made with real chicken and brown rice. Perfect for adult dogs of all sizes.',
-    price: 49.99,
-    originalPrice: 59.99,
-    images: ['/api/placeholder/400/400', '/api/placeholder/400/400', '/api/placeholder/400/400'],
-    category: 'food',
-    subcategory: 'dry-food',
-    brand: 'PetNutrition',
-    rating: 4.8,
-    reviewCount: 156,
-    stock: 25,
-    tags: ['premium', 'chicken', 'adult-dogs'],
-    specifications: {
-      weight: '15 lbs',
-      ingredients: 'Chicken, Brown Rice, Oats, Chicken Fat',
-      'Life Stage': 'Adult',
-      'Pet Size': 'All Sizes'
-    },
-    variants: [
-      { id: '1-5lb', name: '5 lbs', price: 24.99, stock: 15 },
-      { id: '1-15lb', name: '15 lbs', price: 49.99, stock: 25 },
-      { id: '1-30lb', name: '30 lbs', price: 89.99, stock: 10 }
-    ],
-    isOnSale: true,
-    isFeatured: true,
-    createdAt: '2024-01-01',
-    updatedAt: '2024-01-15'
-  }
-];
-
-const mockReviews: Review[] = [
-  {
-    id: '1',
-    userId: '1',
-    userName: 'Sarah Johnson',
-    rating: 5,
-    comment: 'My dog absolutely loves this food! Great quality and value.',
-    createdAt: '2024-01-10',
-    verified: true
-  },
-  {
-    id: '2',
-    userId: '2',
-    userName: 'Mike Chen',
-    rating: 4,
-    comment: 'Good quality food, my dog seems healthier since switching.',
-    createdAt: '2024-01-08',
-    verified: true
-  }
-];
+// Remove all mock data
 
 const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -76,29 +25,53 @@ const ProductDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock API call - replace with actual API
     const fetchProduct = async () => {
+      if (!id) return;
+      
       try {
         setLoading(true);
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
         
-        const foundProduct = mockProducts.find(p => p.id === id);
-        if (foundProduct) {
-          setProduct(foundProduct);
-          setSelectedVariant(foundProduct.variants?.[0]?.id || '');
-          setReviews(mockReviews);
+        // Fetch product from Firebase
+        const docRef = doc(db, 'products', id);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const productData = {
+            id: docSnap.id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+          } as Product;
+          
+          setProduct(productData);
+          setSelectedVariant(productData.variants?.[0]?.id || '');
+          
+          // Fetch reviews for this product
+          const reviewsQuery = query(
+            collection(db, 'reviews'),
+            where('productId', '==', id)
+          );
+          const reviewsSnapshot = await getDocs(reviewsQuery);
+          const reviewsData = reviewsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt
+          })) as Review[];
+          
+          setReviews(reviewsData);
+        } else {
+          setProduct(null);
         }
       } catch (error) {
+        console.error('Error fetching product:', error);
         toast.error('Failed to load product');
       } finally {
         setLoading(false);
       }
     };
 
-    if (id) {
-      fetchProduct();
-    }
+    fetchProduct();
   }, [id]);
 
   const handleAddToCart = () => {
@@ -111,17 +84,10 @@ const ProductDetailPage: React.FC = () => {
     if (!product) return;
 
     const selectedVariantData = product.variants?.find(v => v.id === selectedVariant);
-    const finalPrice = selectedVariantData?.price || product.price;
-
-    addToCart({
-      id: product.id,
-      name: product.name,
-      price: finalPrice,
-      image: product.images[0],
-      quantity,
-      variant: selectedVariantData?.name
-    });
-
+    
+    // Make sure addToCart is called with correct parameters
+    addToCart(product, quantity, selectedVariantData);
+    
     toast.success('Added to cart!');
   };
 
@@ -160,8 +126,8 @@ const ProductDetailPage: React.FC = () => {
   }
 
   const selectedVariantData = product.variants?.find(v => v.id === selectedVariant);
-  const currentPrice = selectedVariantData?.price || product.price;
-  const currentStock = selectedVariantData?.stock || product.stock;
+  const currentPrice = selectedVariantData ? product.price + selectedVariantData.priceModifier : product.price;
+  const currentStock = selectedVariantData ? product.stock + selectedVariantData.stockModifier : product.stock;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -249,7 +215,7 @@ const ProductDetailPage: React.FC = () => {
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-3">Size</h3>
                 <div className="grid grid-cols-3 gap-2">
-                  {product.variants.map((variant) => (
+                  {product.variants.map((variant: ProductVariant) => (
                     <button
                       key={variant.id}
                       onClick={() => setSelectedVariant(variant.id)}
@@ -259,8 +225,8 @@ const ProductDetailPage: React.FC = () => {
                           : 'border-gray-300 hover:border-gray-400'
                       }`}
                     >
-                      <div className="font-medium">{variant.name}</div>
-                      <div className="text-sm text-gray-600">${variant.price}</div>
+                      <div className="font-medium">{variant.value}</div>
+                      <div className="text-sm text-gray-600">${(product.price + variant.priceModifier).toFixed(2)}</div>
                     </button>
                   ))}
                 </div>

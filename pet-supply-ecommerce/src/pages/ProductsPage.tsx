@@ -22,7 +22,7 @@ const ProductsPage: React.FC = () => {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const querySnapshot = await getDocs(collection(db, 'products'));
+      const querySnapshot = await getDocs(collection(db, 'products')); // ✅ Using Firebase
       const productsData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -195,8 +195,7 @@ const ProductsPage: React.FC = () => {
             {filteredProducts.map(product => (
               <ProductCard 
                 key={product.id} 
-                product={product} 
-                viewMode={viewMode}
+                product={product}
               />
             ))}
           </div>

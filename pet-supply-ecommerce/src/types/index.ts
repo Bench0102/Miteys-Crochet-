@@ -1,3 +1,10 @@
+export interface Variant {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -15,6 +22,7 @@ export interface Product {
   petType: PetType[];
   tags: string[];
   specifications: { [key: string]: string };
+  variants?: ProductVariant[];  // Changed from Variant[] to ProductVariant[]
   isOnSale: boolean;
   isFeatured: boolean;
   createdAt: string;
@@ -55,18 +63,20 @@ export interface Review {
   createdAt: string;
 }
 
+// Add optional status field to User interface
 export interface User {
   id: string;
   email: string;
   name: string;
   avatar?: string;
   role: 'user' | 'admin';
-  address: Address;  // Changed from addresses: Address[]
+  addresses: Address[];
   phone?: string;
   dateOfBirth?: string;
-  preferences?: UserPreferences;  // Made optional
+  preferences: UserPreferences;
+  status?: 'active' | 'inactive' | 'banned'; // Add this field
   createdAt: string;
-  lastLogin?: string;  // Made optional
+  lastLogin: string;
 }
 
 export interface UserPreferences {
@@ -173,6 +183,7 @@ export interface RegisterData {
   password: string;
   confirmPassword: string;
   agreeToTerms: boolean;
+  phone?: string; // Add optional phone field
 }
 
 export interface LoginData {

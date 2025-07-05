@@ -101,6 +101,12 @@ function App() {
                     <UserManagement />
                   </AdminRoute>
                 } />
+       
+<Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+<Route path="/admin/products" element={<AdminRoute><ProductManagement /></AdminRoute>} />
+<Route path="/admin/orders" element={<AdminRoute><OrderManagement /></AdminRoute>} />
+<Route path="/admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
+
               </Routes>
             </main>
             
@@ -116,8 +122,8 @@ function App() {
                 },
                 success: {
                   duration: 3000,
-                  theme: {
-                    primary: '#4aed88',
+                  style: {
+                    background: '#4aed88',
                   },
                 },
               }}

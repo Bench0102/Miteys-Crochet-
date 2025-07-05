@@ -1,4 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  updateProfile as updateFirebaseProfile
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { auth, db } from '../config/firebase';
 import { User, AuthContextType, RegisterData } from '../types';
 import toast from 'react-hot-toast';
 
@@ -21,70 +30,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Get user data from Firestore
+        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as User;
+          setUser(userData);
+        } else {
+          // Create user document if it doesn't exist
+          const newUser: User = {
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: firebaseUser.displayName || '',
+            phone: '',
+            role: 'user',
+            addresses: [],
+            preferences: {
+              petTypes: [],
+              favoriteCategories: [],
+              newsletter: true,
+              notifications: {
+                email: true,
+                sms: false,
+                push: true
+              }
+            },
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString()
+          };
+          await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
+          setUser(newUser);
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      // Mock login - replace with actual API call
-      if (email === 'admin@petstore.com' && password === 'admin123') {
-        const adminUser: User = {
-          id: '1',
-          email: 'admin@petstore.com',
-          name: 'Admin User',
-          role: 'admin',
-          addresses: [],
-          preferences: {
-            petTypes: ['all'],
-            favoriteCategories: ['food'],
-            newsletter: true,
-            notifications: {
-              email: true,
-              sms: false,
-              push: true
-            }
-          },
-          createdAt: '2024-01-01',
-          lastLogin: new Date().toISOString()
-        };
-        setUser(adminUser);
-        localStorage.setItem('user', JSON.stringify(adminUser));
-        toast.success('Welcome back, Admin!');
-      } else if (email === 'user@petstore.com' && password === 'user123') {
-        const regularUser: User = {
-          id: '2',
-          email: 'user@petstore.com',
-          name: 'John Doe',
-          role: 'user',
-          addresses: [],
-          preferences: {
-            petTypes: ['dog', 'cat'],
-            favoriteCategories: ['food', 'toys'],
-            newsletter: true,
-            notifications: {
-              email: true,
-              sms: false,
-              push: true
-            }
-          },
-          createdAt: '2024-01-01',
-          lastLogin: new Date().toISOString()
-        };
-        setUser(regularUser);
-        localStorage.setItem('user', JSON.stringify(regularUser));
-        toast.success('Welcome back!');
-      } else {
-        throw new Error('Invalid credentials');
-      }
-    } catch (error) {
-      toast.error('Invalid email or password');
+      // Update last login
+      await updateDoc(doc(db, 'users', userCredential.user.uid), {
+        lastLogin: new Date().toISOString()
+      });
+      
+      toast.success('Welcome back!');
+    } catch (error: any) {
+      toast.error(error.message || 'Login failed');
       throw error;
     } finally {
       setLoading(false);
@@ -94,12 +93,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (userData: RegisterData) => {
     try {
       setLoading(true);
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        userData.email,
+        userData.password
+      );
       
-      // Mock registration - replace with actual API call
+      // Update Firebase Auth profile
+      await updateFirebaseProfile(userCredential.user, {
+        displayName: userData.name
+      });
+      
       const newUser: User = {
-        id: Date.now().toString(),
-        email: userData.email,
+        id: userCredential.user.uid,
         name: userData.name,
+        email: userData.email,
+        phone: userData.phone || '',
         role: 'user',
         addresses: [],
         preferences: {
@@ -116,21 +125,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         lastLogin: new Date().toISOString()
       };
       
-      setUser(newUser);
-      localStorage.setItem('user', JSON.stringify(newUser));
+      // Save user data to Firestore
+      await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
+      
       toast.success('Account created successfully!');
-    } catch (error) {
-      toast.error('Registration failed');
+    } catch (error: any) {
+      toast.error(error.message || 'Registration failed');
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-    toast.success('Logged out successfully');
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      toast.success('Logged out successfully');
+    } catch (error: any) {
+      toast.error('Logout failed');
+      throw error;
+    }
   };
 
   const updateProfile = async (userData: Partial<User>) => {
@@ -138,10 +152,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!user) throw new Error('No user logged in');
       
       const updatedUser = { ...user, ...userData };
+      
+      // Update Firestore
+      await updateDoc(doc(db, 'users', user.id), userData);
+      
+      // Update Firebase Auth profile if name changed
+      if (userData.name) {
+        await updateFirebaseProfile(auth.currentUser!, {
+          displayName: userData.name
+        });
+      }
+      
       setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
       toast.success('Profile updated successfully');
-    } catch (error) {
+    } catch (error: any) {
       toast.error('Failed to update profile');
       throw error;
     }
@@ -163,3 +187,5 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+export { AuthContext };

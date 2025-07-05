@@ -26,7 +26,7 @@ const OrderManagement: React.FC = () => {
 
   useEffect(() => {
     // Set up real-time listener for orders
-    const unsubscribe = firebaseService.subscribeToOrders((ordersData) => {
+    const unsubscribe = firebaseService.subscribeToOrders((ordersData: Order[]) => {
       setOrders(ordersData);
       setLoading(false);
     });
@@ -47,10 +47,40 @@ const OrderManagement: React.FC = () => {
       await firebaseService.updateOrderStatus(orderId, newStatus);
       toast.success(`Order ${orderId} status updated to ${newStatus}`);
     } catch (error) {
+      console.error('Error updating order status:', error);
       toast.error('Failed to update order status');
     }
   };
 
+  // Add this function to view order details
+  const viewOrderDetails = (order: Order) => {
+    setSelectedOrder(order);
+    setShowOrderModal(true);
+  };
+
+  // In the Actions column of the table, add this properly:
+  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+    <div className="flex space-x-2">
+      <button
+        onClick={() => viewOrderDetails(order)}
+        className="text-blue-600 hover:text-blue-900"
+        title="View Details"
+      >
+        <Eye className="w-4 h-4" />
+      </button>
+      <select
+        value={order.status}
+        onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
+        className="text-xs border border-gray-300 rounded px-1 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      >
+        <option value="pending">Pending</option>
+        <option value="processing">Processing</option>
+        <option value="shipped">Shipped</option>
+        <option value="delivered">Delivered</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+    </div>
+  </td>
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
@@ -225,18 +255,16 @@ const OrderManagement: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
                         <button
-                          onClick={() => {
-                            setSelectedOrder(order);
-                            setShowOrderModal(true);
-                          }}
+                          onClick={() => viewOrderDetails(order)}
                           className="text-blue-600 hover:text-blue-900"
+                          title="View Details"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
                         <select
                           value={order.status}
                           onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
-                          className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="text-xs border border-gray-300 rounded px-1 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
                           <option value="pending">Pending</option>
                           <option value="processing">Processing</option>

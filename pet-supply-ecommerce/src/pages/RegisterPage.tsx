@@ -58,6 +58,8 @@ const RegisterPage: React.FC = () => {
         name: formData.name,
         email: formData.email,
         password: formData.password,
+        confirmPassword: formData.confirmPassword,  // Add this
+        agreeToTerms: formData.agreeToTerms,        // Add this
         phone: formData.phone
       });
       navigate('/');

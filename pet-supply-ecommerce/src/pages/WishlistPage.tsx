@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, ShoppingCart, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import { Product } from '../types';
+import { Heart, ShoppingCart, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { doc, getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 const WishlistPage: React.FC = () => {
   const { user } = useAuth();
@@ -12,62 +14,58 @@ const WishlistPage: React.FC = () => {
   const [wishlistItems, setWishlistItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Mock wishlist data
-  const mockWishlistItems: Product[] = [
-    {
-      id: '1',
-      name: 'Premium Dog Food',
-      description: 'High-quality nutrition for adult dogs',
-      price: 49.99,
-      originalPrice: 59.99,
-      images: ['https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=400'],
-      category: 'food',
-      brand: 'PetNutrition',
-      stock: 25,
-      rating: 4.5,
-      reviewCount: 128,
-      reviews: [],
-      petType: ['dog'],
-      tags: ['premium', 'adult', 'nutrition'],
-      specifications: { 'Weight': '15kg', 'Age': 'Adult' },
-      isOnSale: true,
-      isFeatured: true,
-      createdAt: '2024-01-01',
-      updatedAt: '2024-01-01'
-    },
-    {
-      id: '3',
-      name: 'Comfortable Pet Bed',
-      description: 'Soft and cozy bed for small to medium pets',
-      price: 39.99,
-      images: ['https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=400'],
-      category: 'beds',
-      brand: 'ComfortPet',
-      stock: 8,
-      rating: 4.7,
-      reviewCount: 156,
-      reviews: [],
-      petType: ['dog', 'cat'],
-      tags: ['comfort', 'washable'],
-      specifications: { 'Size': 'Medium', 'Material': 'Memory Foam' },
-      isOnSale: false,
-      isFeatured: true,
-      createdAt: '2024-01-01',
-      updatedAt: '2024-01-01'
-    }
-  ];
-
   useEffect(() => {
-    // Simulate API call to fetch wishlist
-    setTimeout(() => {
-      setWishlistItems(mockWishlistItems);
-      setLoading(false);
-    }, 1000);
-  }, []);
+    const fetchWishlist = async () => {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-  const removeFromWishlist = (productId: string) => {
-    setWishlistItems(prev => prev.filter(item => item.id !== productId));
-    toast.success('Removed from wishlist');
+      try {
+        setLoading(true);
+        
+        // Get user's wishlist from Firebase
+        const userDoc = await getDoc(doc(db, 'users', user.id));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const wishlistIds = userData.wishlist || [];
+          
+          // Fetch product details for each wishlist item
+          const wishlistProducts: Product[] = [];
+          for (const productId of wishlistIds) {
+            const productDoc = await getDoc(doc(db, 'products', productId));
+            if (productDoc.exists()) {
+              wishlistProducts.push({ id: productDoc.id, ...productDoc.data() } as Product);
+            }
+          }
+          
+          setWishlistItems(wishlistProducts);
+        }
+      } catch (error) {
+        console.error('Error fetching wishlist:', error);
+        toast.error('Failed to load wishlist');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchWishlist();
+  }, [user]);
+
+  const removeFromWishlist = async (productId: string) => {
+    if (!user) return;
+    
+    try {
+      await updateDoc(doc(db, 'users', user.id), {
+        wishlist: arrayRemove(productId)
+      });
+      
+      setWishlistItems(prev => prev.filter(item => item.id !== productId));
+      toast.success('Removed from wishlist');
+    } catch (error) {
+      console.error('Error removing from wishlist:', error);
+      toast.error('Failed to remove from wishlist');
+    }
   };
 
   const addToCartFromWishlist = (product: Product) => {
